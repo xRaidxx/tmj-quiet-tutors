@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TMJ — Quiet Tutor Finder</title>
+<style>
+  :root { --ink:#1d2433; --muted:#6b7686; --line:#e4e8ef; --bg:#f6f8fb;
+          --accent:#2563eb; --warn:#b45309; --warnbg:#fff7ed; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+         color:var(--ink); background:var(--bg); }
+  header { background:#fff; border-bottom:1px solid var(--line); padding:20px 28px; }
+  h1 { margin:0; font-size:20px; }
+  .sub { color:var(--muted); font-size:13px; margin-top:4px; }
+  main { max-width:980px; margin:0 auto; padding:24px 20px 60px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:10px;
+          padding:20px; margin-bottom:22px; }
+  .controls { display:flex; flex-wrap:wrap; gap:18px; align-items:flex-end; }
+  .field { display:flex; flex-direction:column; gap:6px; }
+  .field label { font-size:12px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
+  input[type=date], input[type=number] { padding:8px 10px; border:1px solid var(--line);
+          border-radius:7px; font:inherit; }
+  .drop { border:2px dashed var(--line); border-radius:9px; padding:16px; text-align:center;
+          color:var(--muted); cursor:pointer; transition:.15s; background:#fafbfd; }
+  .drop.ok { border-color:var(--accent); color:var(--ink); background:#eff4ff; }
+  .drop.drag { border-color:var(--accent); background:#eff4ff; }
+  .drop strong { color:var(--ink); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:640px){ .grid2{ grid-template-columns:1fr; } }
+  button { font:inherit; font-weight:600; border:0; border-radius:7px; padding:9px 16px; cursor:pointer; }
+  .primary { background:var(--accent); color:#fff; }
+  .primary:disabled { background:#aab4c5; cursor:not-allowed; }
+  .ghost { background:#eef1f6; color:var(--ink); }
+  .summary { font-size:16px; margin:0 0 14px; }
+  .pill { display:inline-block; background:#eff4ff; color:var(--accent); border-radius:20px;
+          padding:2px 10px; font-size:13px; font-weight:600; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th,td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); }
+  th { font-size:12px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); }
+  tbody tr:hover { background:#fafbfd; }
+  .id { font-variant-numeric:tabular-nums; font-weight:600; }
+  .days { font-weight:700; }
+  .d-hi { color:#b91c1c; } .d-mid { color:var(--warn); }
+  .review { background:var(--warnbg); border-color:#fed7aa; }
+  .review h2 { color:var(--warn); }
+  .muted { color:var(--muted); }
+  .hidden { display:none; }
+  .row-actions { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+  code { background:#eef1f6; padding:1px 5px; border-radius:4px; font-size:13px; }
+  a.tutorlink { color:var(--accent); text-decoration:none; }
+  a.tutorlink:hover { text-decoration:underline; }
+</style>
+</head>
+<body>
+<header>
+  <h1>TMJ — Quiet Tutor Finder</h1>
+  <div class="sub">Import the roster and the session log. A tutor is <em>quiet</em> if they
+    haven’t run a session in the chosen window. Everything runs in your browser; nothing is uploaded.</div>
+</header>
+
+<main>
+  <div class="card">
+    <div class="grid2">
+      <div class="drop" id="dropTutors">
+        <strong>tutors.csv</strong> — the roster<br>
+        <span class="muted">click to choose or drop file</span>
+        <input type="file" accept=".csv" id="fileTutors" class="hidden" />
+      </div>
+      <div class="drop" id="dropSessions">
+        <strong>sessions.csv</strong> — the session log<br>
+        <span class="muted">click to choose or drop file</span>
+        <input type="file" accept=".csv" id="fileSessions" class="hidden" />
+      </div>
+    </div>
+
+    <div class="controls" style="margin-top:18px">
+      <div class="field">
+        <label for="today">“Today” (export date)</label>
+        <input type="date" id="today" value="2026-05-29" />
+      </div>
+      <div class="field">
+        <label for="days">Quiet after (days)</label>
+        <input type="number" id="days" value="21" min="1" style="width:90px" />
+      </div>
+      <button class="primary" id="run" disabled>Find quiet tutors</button>
+    </div>
+  </div>
+
+  <div id="results" class="hidden">
+    <div class="card">
+      <p class="summary" id="summary"></p>
+      <table>
+        <thead><tr>
+          <th>ID</th><th>Name</th><th>Subject</th><th>Last session</th>
+          <th>Days quiet</th><th>Contact</th><th>Sessions</th>
+        </tr></thead>
+        <tbody id="quietBody"></tbody>
+      </table>
+      <div class="row-actions">
+        <button class="ghost" id="dlQuiet">Download quiet list (CSV)</button>
+      </div>
+    </div>
+
+    <div class="card review" id="reviewCard">
+      <h2 style="margin:0 0 6px;font-size:16px">Needs review</h2>
+      <p class="muted" style="margin:0 0 12px">Session names that didn’t resolve to a roster
+        <code>tutor_id</code>. A name with no id is itself worth a human look.</p>
+      <table>
+        <thead><tr>
+          <th>Session name</th><th>Reason</th><th>Sessions</th><th>Last seen</th><th>Subject(s)</th>
+        </tr></thead>
+        <tbody id="reviewBody"></tbody>
+      </table>
+      <div class="row-actions">
+        <button class="ghost" id="dlReview">Download review list (CSV)</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ---------- tiny CSV parser (handles quoted fields, commas, CRLF) ----------
+function parseCSV(text) {
+  const rows = []; let row = [], field = "", q = false;
+  text = text.replace(/^﻿/, "");           // strip BOM
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i+1] === '"') { field += '"'; i++; } else q = false; }
+      else field += c;
+    } else if (c === '"') q = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+    else if (c === "\r") { /* skip */ }
+    else field += c;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  const header = rows.shift().map(h => h.trim());
+  return rows.filter(r => r.some(v => v.trim() !== ""))
+             .map(r => Object.fromEntries(header.map((h, i) => [h, (r[i] ?? "").trim()])));
+}
+
+// ---------- matching logic (mirrors the Python script) ----------
+const norm = s => s.toLowerCase().replace(/[.']/g, " ").split(/\s+/).filter(Boolean).join(" ");
+
+function matchTutor(sessionName, subject, tutors) {
+  const sname = norm(sessionName);
+  const exact = tutors.filter(t => norm(t.name) === sname);
+  if (exact.length === 1) return { tutor: exact[0], how: "exact" };
+
+  const tokens = sname.split(" ");
+  const cands = tutors.filter(t => {
+    const tp = norm(t.name).split(" ");
+    if (tp.length !== tokens.length) return false;
+    return tokens.every((st, i) => st === tp[i] || (st.length === 1 && tp[i].startsWith(st)));
+  });
+  if (cands.length === 1) return { tutor: cands[0], how: "abbreviated" };
+  if (cands.length > 1) {
+    const bySub = cands.filter(t => t.subject.toLowerCase() === subject.toLowerCase());
+    if (bySub.length === 1) return { tutor: bySub[0], how: "abbreviated+subject" };
+    return { tutor: null, how: `ambiguous (${cands.length} candidates)` };
+  }
+  return { tutor: null, how: "no roster match" };
+}
+
+// ---------- state ----------
+let tutors = null, sessions = null, lastQuiet = [], lastReview = [];
+
+function wireDrop(dropId, inputId, onload) {
+  const drop = document.getElementById(dropId), input = document.getElementById(inputId);
+  drop.onclick = () => input.click();
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add("drag"); };
+  drop.ondragleave = () => drop.classList.remove("drag");
+  drop.ondrop = e => { e.preventDefault(); drop.classList.remove("drag");
+    if (e.dataTransfer.files[0]) read(e.dataTransfer.files[0]); };
+  input.onchange = () => { if (input.files[0]) read(input.files[0]); };
+  function read(file) {
+    const fr = new FileReader();
+    fr.onload = () => { onload(parseCSV(fr.result));
+      drop.classList.add("ok");
+      drop.querySelector(".muted").textContent = "loaded: " + file.name;
+      maybeEnable(); };
+    fr.readAsText(file);
+  }
+}
+function maybeEnable() {
+  document.getElementById("run").disabled = !(tutors && sessions);
+}
+
+wireDrop("dropTutors", "fileTutors", d => { tutors = d; });
+wireDrop("dropSessions", "fileSessions", d => { sessions = d; });
+
+// ---------- run ----------
+document.getElementById("run").onclick = () => {
+  const today = new Date(document.getElementById("today").value + "T00:00:00");
+  const threshold = parseInt(document.getElementById("days").value, 10);
+  const lastSeen = {}, count = {}, unmatched = {};
+
+  sessions.forEach(s => {
+    const d = new Date(s.date + "T00:00:00");
+    const { tutor, how } = matchTutor(s.tutor_name, s.subject, tutors);
+    if (!tutor) {
+      const u = unmatched[s.tutor_name] ||= { reason: how, count: 0, last: d, subjects: new Set() };
+      u.count++; if (d > u.last) u.last = d; u.subjects.add(s.subject);
+      return;
+    }
+    const id = tutor.tutor_id;
+    count[id] = (count[id] || 0) + 1;
+    if (!lastSeen[id] || d > lastSeen[id]) lastSeen[id] = d;
+  });
+
+  const dayMs = 86400000;
+  const quiet = [];
+  tutors.forEach(t => {
+    const id = t.tutor_id, last = lastSeen[id];
+    const days = last ? Math.round((today - last) / dayMs) : null;
+    if (last == null || days >= threshold) {
+      quiet.push({ ...t, last, days, sessions: count[id] || 0 });
+    }
+  });
+  quiet.sort((a, b) => (b.days ?? 1e9) - (a.days ?? 1e9));
+
+  const review = Object.entries(unmatched).map(([name, u]) => ({
+    name, reason: u.reason, count: u.count, last: u.last,
+    subjects: [...u.subjects].sort().join(", ")
+  })).sort((a, b) => a.name.localeCompare(b.name));
+
+  render(quiet, review, tutors.length);
+};
+
+function fmt(d) { return d ? d.toISOString().slice(0, 10) : "NEVER"; }
+
+function render(quiet, review, total) {
+  lastQuiet = quiet; lastReview = review;
+  document.getElementById("results").classList.remove("hidden");
+  document.getElementById("summary").innerHTML =
+    `<span class="pill">${quiet.length} of ${total}</span> tutors have gone quiet.`;
+
+  const qb = document.getElementById("quietBody");
+  qb.innerHTML = quiet.map(r => {
+    const cls = r.days == null ? "" : r.days >= 42 ? "d-hi" : r.days >= 28 ? "d-mid" : "";
+    return `<tr>
+      <td class="id">${r.tutor_id}</td>
+      <td>${r.name}</td>
+      <td>${r.subject}</td>
+      <td>${fmt(r.last)}</td>
+      <td class="days ${cls}">${r.days == null ? "—" : r.days}</td>
+      <td><a class="tutorlink" href="tel:${r.phone.replace(/\s/g,"")}">${r.phone}</a><br>
+          <a class="tutorlink" href="mailto:${r.email}">${r.email}</a></td>
+      <td>${r.sessions}</td></tr>`;
+  }).join("");
+
+  const rc = document.getElementById("reviewCard");
+  if (review.length === 0) { rc.classList.add("hidden"); }
+  else {
+    rc.classList.remove("hidden");
+    document.getElementById("reviewBody").innerHTML = review.map(r => `<tr>
+      <td>${r.name}</td><td>${r.reason}</td><td>${r.count}</td>
+      <td>${fmt(r.last)}</td><td>${r.subjects}</td></tr>`).join("");
+  }
+}
+
+// ---------- CSV download ----------
+function download(name, header, rows) {
+  const esc = v => /[",\n]/.test(v) ? '"' + String(v).replace(/"/g, '""') + '"' : v;
+  const csv = [header.join(",")].concat(rows.map(r => r.map(esc).join(","))).join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = name; a.click();
+}
+document.getElementById("dlQuiet").onclick = () => download("quiet_tutors.csv",
+  ["tutor_id","name","subject","last_session","days_quiet","phone","email","sessions_seen"],
+  lastQuiet.map(r => [r.tutor_id, r.name, r.subject, fmt(r.last), r.days ?? "n/a", r.phone, r.email, r.sessions]));
+document.getElementById("dlReview").onclick = () => download("needs_review.csv",
+  ["session_name","reason","sessions","last_session","subjects"],
+  lastReview.map(r => [r.name, r.reason, r.count, fmt(r.last), r.subjects]));
+</script>
+</body>
+</html>
